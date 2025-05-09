@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use borsh::{BorshDeserialize, BorshSerialize};
+use anchor_lang::solana_program::program_pack::Pack;
 
 declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 
@@ -7,23 +7,39 @@ declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 pub mod initialization {
     use super::*;
 
-    pub fn insecure_initialization(ctx: Context<Unchecked>) -> Result<()> {
-        let mut user = UserInsecure::try_from_slice(&ctx.accounts.user.data.borrow()).unwrap();
-        user.authority = ctx.accounts.authority.key();
-        user.serialize(&mut *ctx.accounts.user.data.borrow_mut())?;
+    pub fn secure_initialization(ctx: Context<InitializeUser>) -> Result<()> {
+        let user = &mut ctx.accounts.user;
+        require!(
+            user.authority == Pubkey::default(),
+            CustomError::AlreadyInitialized
+        );
+        user.authority = *ctx.accounts.authority.key;
         Ok(())
     }
 }
 
 #[derive(Accounts)]
-pub struct Unchecked<'info> {
+pub struct InitializeUser<'info> {
+    #[account(
+        init_if_needed,
+        payer = authority,
+        space = 8 + 32,
+        seeds = [b"user", authority.key().as_ref()],
+        bump
+    )]
+    pub user: Account<'info, UserSecure>,
     #[account(mut)]
-    /// CHECK:
-    user: UncheckedAccount<'info>,
-    authority: Signer<'info>,
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
 }
 
-#[derive(BorshSerialize, BorshDeserialize)]
-pub struct UserInsecure {
-    authority: Pubkey,
+#[account]
+pub struct UserSecure {
+    pub authority: Pubkey,
+}
+
+#[error_code]
+pub enum CustomError {
+    #[msg("Account already initialized.")]
+    AlreadyInitialized,
 }
